@@ -25,7 +25,7 @@ export const handler = async (event) => {
     return reply(200, records);
   }
   if (event.httpMethod !== 'POST') return reply(405, { error: 'Method not allowed' });
-  const body = JSON.parse(event.body || '{}');
+  const body = typeof event.body === 'string' ? JSON.parse(event.body || '{}') : (event.body || {});
   const code = String(body.code || '').trim().toUpperCase();
   const record = await getRecord(code);
   if (body.action === 'checkin') {
