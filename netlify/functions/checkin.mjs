@@ -4,7 +4,7 @@ const ADMIN_PIN = process.env.ADMIN_PIN || '2026';
 const store = getStore('faithful-toluwanitemi-checkin');
 
 function response(statusCode, body) {
-  return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  return new Response(JSON.stringify(body), { status: statusCode, headers: { 'Content-Type': 'application/json' } });
 }
 
 async function seedCodes() {
@@ -23,7 +23,6 @@ async function getRecord(code) {
 export default async (request) => {
   await seedCodes();
   const url = new URL(request.url);
-
   if (request.method === 'GET' && url.searchParams.get('action') === 'list') {
     const records = [];
     const page = await store.list({ prefix: 'code:' });
@@ -34,12 +33,10 @@ export default async (request) => {
     records.sort((left, right) => left.code.localeCompare(right.code));
     return response(200, records);
   }
-
   if (request.method !== 'POST') return response(405, { error: 'Method not allowed' });
   const body = await request.json();
   const code = String(body.code || '').trim().toUpperCase();
   const record = await getRecord(code);
-
   if (body.action === 'checkin') {
     if (!record) return response(200, { status: 'invalid' });
     if (record.status === 'used') return response(200, { status: 'used', data: record });
@@ -48,7 +45,6 @@ export default async (request) => {
     await store.setJSON('code:' + code, record);
     return response(200, { status: 'success', data: record });
   }
-
   if (body.pin !== ADMIN_PIN) return response(401, { error: 'Unauthorized' });
   if (body.action === 'reset' && record) {
     record.status = 'unused';
