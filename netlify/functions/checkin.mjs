@@ -1,12 +1,7 @@
 import { getStore } from '@netlify/blobs';
-
 const ADMIN_PIN = process.env.ADMIN_PIN || '2026';
 const store = getStore('faithful-toluwanitemi-checkin');
-
-function response(statusCode, body) {
-  return new Response(JSON.stringify(body), { status: statusCode, headers: { 'Content-Type': 'application/json' } });
-}
-
+const reply = (statusCode, body) => ({ statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 async function seedCodes() {
   if (await store.get('seeded')) return;
   for (let number = 1; number <= 50; number += 1) {
@@ -15,15 +10,11 @@ async function seedCodes() {
   }
   await store.set('seeded', 'true');
 }
-
-async function getRecord(code) {
-  return store.get('code:' + code, { type: 'json' });
-}
-
-export default async (request) => {
+async function getRecord(code) { return store.get('code:' + code, { type: 'json' }); }
+export const handler = async (event) => {
   await seedCodes();
-  const url = new URL(request.url);
-  if (request.method === 'GET' && url.searchParams.get('action') === 'list') {
+  const params = event.queryStringParameters || {};
+  if (event.httpMethod === 'GET' && params.action === 'list') {
     const records = [];
     const page = await store.list({ prefix: 'code:' });
     for (const item of page.blobs) {
@@ -31,31 +22,31 @@ export default async (request) => {
       if (record) records.push(record);
     }
     records.sort((left, right) => left.code.localeCompare(right.code));
-    return response(200, records);
+    return reply(200, records);
   }
-  if (request.method !== 'POST') return response(405, { error: 'Method not allowed' });
-  const body = await request.json();
+  if (event.httpMethod !== 'POST') return reply(405, { error: 'Method not allowed' });
+  const body = JSON.parse(event.body || '{}');
   const code = String(body.code || '').trim().toUpperCase();
   const record = await getRecord(code);
   if (body.action === 'checkin') {
-    if (!record) return response(200, { status: 'invalid' });
-    if (record.status === 'used') return response(200, { status: 'used', data: record });
+    if (!record) return reply(200, { status: 'invalid' });
+    if (record.status === 'used') return reply(200, { status: 'used', data: record });
     record.status = 'used';
     record.usedAt = new Date().toISOString();
     await store.setJSON('code:' + code, record);
-    return response(200, { status: 'success', data: record });
+    return reply(200, { status: 'success', data: record });
   }
-  if (body.pin !== ADMIN_PIN) return response(401, { error: 'Unauthorized' });
+  if (body.pin !== ADMIN_PIN) return reply(401, { error: 'Unauthorized' });
   if (body.action === 'reset' && record) {
     record.status = 'unused';
     record.usedAt = null;
     await store.setJSON('code:' + code, record);
-    return response(200, record);
+    return reply(200, record);
   }
   if (body.action === 'issue' && code && body.guestName) {
     const newRecord = { code, guestName: String(body.guestName).trim(), admits: Number(body.admits) || 1, status: 'unused', usedAt: null, issuedAt: new Date().toISOString() };
     await store.setJSON('code:' + code, newRecord);
-    return response(200, newRecord);
+    return reply(200, newRecord);
   }
-  return response(400, { error: 'Invalid request' });
+  return reply(400, { error: 'Invalid request' });
 };
